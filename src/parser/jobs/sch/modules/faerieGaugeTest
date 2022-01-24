@@ -1,0 +1,101 @@
+import {t} from '@lingui/macro'
+import {Trans} from '@lingui/react'
+import {JOBS} from 'data/JOBS'
+import {Event, Events} from 'event'
+import {filter, oneOf} from 'parser/core/filter'
+import {dependency} from 'parser/core/Injectable'
+import {Actors} from 'parser/core/modules/Actors'
+import {Cooldowns} from 'parser/core/modules/Cooldowns'
+import {CounterGauge, Gauge as CoreGauge} from 'parser/core/modules/Gauge'
+import Suggestions, {SEVERITY, TieredSuggestion} from 'parser/core/modules/Suggestions'
+import React from 'react'
+
+type GaugeModifier = Partial<Record<Event['type'], number>>
+
+const SUGGESTION_TIERS = {
+	20: SEVERITY.MINOR,
+	50: SEVERITY.MAJOR,
+}
+
+export class Gauge extends CoreGauge {
+	static override title = t('sch.gauge.title')`Faerie Gauge`
+
+	@dependency private actors!: Actors
+	@dependency private cooldowns!: Cooldowns
+	@dependency private suggestions!: Suggestions
+
+	private beastGauge = this.add(new CounterGauge({
+		chart: {label: 'Faerie Gauge', color: JOBS.SCHOLAR.colour},
+	}))
+
+	private faerieGaugeModifiers = new Map<number, GaugeModifier>([
+		// Builders
+		[this.data.actions.ENERGY_DRAIN.id, 10],
+    [this.data.actions.LUSTRATE.id, 10],
+    [this.data.actions.SACRED_SOIL.id, 10],
+    [this.data.actions.INDOMITABILITY.id, 10],
+    [this.data.actions.EXCOGITATION.id, 10],
+		// Spenders (no longer used here)
+		// [this.data.statuses.FEY_UNION.id, {heal: -10}],
+	])
+
+	override initialise() {
+		super.initialise()
+    
+    const pets = this.parser.pull.actors
+			.filter(actor => actor.owner === this.parser.actor)
+			.map(actor => actor.id)
+		const petsFilter = filter<Event>()
+			.source(oneOf(pets))
+	
+  const faerieActions = Array.from(this.faerieGaugeModifiers.keys())
+		
+    this.addEventHook(
+			.source(oneOf(pets))
+      .type('heal)
+      .cause(
+        filter<Cause>()
+        .type('status')
+        .status(this.data.statuses.FEY_UNION.id))
+      this.onGaugeModifier.spend(10),
+		)
+
+		this.addEventHook(
+			filter<Event>()
+				.source(this.parser.actor.id)
+				.type(action)
+				.action(oneOf(faerieActions)),
+			this.onGaugeModifier.gain(10),
+		)
+
+		this.addEventHook('complete', this.onComplete)
+	}
+
+private onGaugeModifier(event: Events['action' | 'heal']) {
+		const modifier = this.faerieGaugeModifiers.get(event.action)
+
+//		if (modifier != null) {
+			// Spenders are free during IR
+//			let amount = modifier[event.type] ?? 0
+//			if (this.actors.current.hasStatus(this.data.statuses.INNER_RELEASE.id)) {
+//				amount = Math.max(amount, 0)
+//			}
+//
+//			this.beastGauge.modify(amount)
+//		}
+//	}
+
+	private onComplete() {
+		this.suggestions.add(new TieredSuggestion({
+			icon: this.data.actions.FEY_UNION.icon,
+			content: <Trans id="sch.gauge.suggestions.loss.content">
+					Avoid letting your Faerie Gauge overcap - it's a good focused heal on the current tank.
+			</Trans>,
+			why: <Trans id="sch.gauge.suggestions.loss.why">
+				{this.faerieGauge.overCap} Ticks lost to overcapping Faerie gauge.
+			</Trans>,
+			tiers: SUGGESTION_TIERS,
+			value: this.faerieGauge.overCap,
+		}))
+	}
+}
